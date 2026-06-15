@@ -68,7 +68,7 @@ async function fetchSubtitleFile(candidate, parsed) {
   const headers = site.downloadHeaders ? site.downloadHeaders() : {};
   await http.download(zipUrl, dest, { headers });
 
-  // Read the downloaded zip back as bytes for fflate.
+  // Read the downloaded zip back as bytes for the unzip step.
   const absZip = utils.resolvePath(dest);
   const bytes = readBytes(absZip);
   if (!bytes) {

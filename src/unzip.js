@@ -1,6 +1,8 @@
 // Unzip + encoding handling for downloaded subtitle archives.
 //
-// IINA's plugin API has NO native unzip, so we use fflate (pure JS, vendored).
+// IINA's plugin API has NO native unzip, so we use a small self-contained
+// pure-JS unzip (vendor/unzip.js) — no deps, no UMD globals (IINA's JSCore
+// sandbox lacks worker_threads/self/window, which broke off-the-shelf libs).
 // Persian subtitles are very frequently encoded as Windows-1256 (or UTF-8 with
 // or without BOM). mpv/IINA generally renders UTF-8 reliably, so we decode the
 // bytes with the best-guess encoding and re-write the file as UTF-8.
