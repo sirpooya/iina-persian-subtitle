@@ -11,7 +11,20 @@
       "Bash(curl -fsSL https://unpkg.com/fflate@0.8.2/umd/index.js -o vendor/fflate.js)",
       "Bash(node tools/probe.js)",
       "Bash(node tools/probe.js \"The.Matrix.1999.1080p.BluRay.x264-YIFY.mkv\")",
-      "Bash(node -e \"const f=require\\('./vendor/fflate.js'\\); console.log\\('unzipSync type:', typeof f.unzipSync\\);\")"
+      "Bash(node -e \"const f=require\\('./vendor/fflate.js'\\); console.log\\('unzipSync type:', typeof f.unzipSync\\);\")",
+      "Bash(/Applications/IINA.app/Contents/MacOS/iina-cli --version)",
+      "Bash(/usr/bin/defaults read *)",
+      "Bash(/usr/bin/defaults write *)",
+      "Bash(echo \"iinaEnablePluginSystem  = $\\(/usr/bin/defaults read com.colliderli.iina iinaEnablePluginSystem 2>/dev/null\\)\")",
+      "Bash(echo \"iinaShowAdvancedSettings = $\\(/usr/bin/defaults read com.colliderli.iina iinaShowAdvancedSettings 2>/dev/null\\)\")",
+      "Bash(/usr/bin/defaults delete *)",
+      "Bash(/usr/bin/strings /Applications/IINA.app/Contents/MacOS/IINA)",
+      "Bash(/usr/bin/strings /Applications/IINA.app/Contents/MacOS/iina-cli)",
+      "Bash(ln -sfn /Users/pooya/Documents/GitHub/iina-persian-subtitle '/Users/pooya/Library/Application Support/com.colliderli.iina/plugins/persian-subtitle.iinaplugin-dev')",
+      "Bash(test -f __TRACKED_VAR__/Info.json)",
+      "Bash(echo \"build: $\\(/usr/bin/defaults read /Applications/IINA.app/Contents/Info.plist CFBundleVersion \\)\")",
+      "Bash(curl -fsSL https://unpkg.com/fflate@0.8.2/esm/browser.js -o /tmp/fflate-esm.js)",
+      "Bash(node --check vendor/unzip.js)"
     ]
   }
 }

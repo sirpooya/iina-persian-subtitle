@@ -5,7 +5,7 @@
 // or without BOM). mpv/IINA generally renders UTF-8 reliably, so we decode the
 // bytes with the best-guess encoding and re-write the file as UTF-8.
 
-const { unzipSync } = require("../vendor/fflate.js");
+const { unzipSync } = require("../vendor/unzip.js");
 
 const { console, file, utils } = iina;
 
