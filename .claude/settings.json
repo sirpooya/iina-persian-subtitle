@@ -24,7 +24,9 @@
       "Bash(test -f __TRACKED_VAR__/Info.json)",
       "Bash(echo \"build: $\\(/usr/bin/defaults read /Applications/IINA.app/Contents/Info.plist CFBundleVersion \\)\")",
       "Bash(curl -fsSL https://unpkg.com/fflate@0.8.2/esm/browser.js -o /tmp/fflate-esm.js)",
-      "Bash(node --check vendor/unzip.js)"
+      "Bash(node --check vendor/unzip.js)",
+      "Bash(node -e ' *)",
+      "Bash(node tools/probe.js \"The.Laws.of.the.Universe.The.Age.of.Elohim.2021.720p.YIFY.mkv\")"
     ]
   }
 }

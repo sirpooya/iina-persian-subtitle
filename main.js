@@ -54,6 +54,25 @@ function siteLabel(id) {
   return (s && (s.label || s.name)) || id;
 }
 
+// The best name to search by. core.status.title is a metadata "best guess" and
+// is often wrong/empty, so prefer the actual file name from core.status.url
+// (which keeps the release name, e.g. "The.Laws...2021.720p.YIFY.mkv").
+function playingFileName() {
+  const url = core.status.url || "";
+  if (url) {
+    // Strip query/fragment, take the last path segment, decode %xx.
+    let base = url.split(/[?#]/)[0].replace(/\/+$/, "");
+    base = base.substring(base.lastIndexOf("/") + 1);
+    try {
+      base = decodeURIComponent(base);
+    } catch (e) {
+      /* leave as-is */
+    }
+    if (base) return base;
+  }
+  return core.status.title || "";
+}
+
 // Resolve -> download -> unzip -> convert -> return absolute path of a UTF-8
 // subtitle file ready to load. Returns null on failure.
 async function fetchSubtitleFile(candidate, parsed) {
@@ -121,9 +140,12 @@ subtitle.registerProvider("persian-subs", {
   // IINA calls this when the user triggers Find Online Subtitles. We search by
   // the currently-playing file's name. The returned items populate the list.
   search: async () => {
-    const title = core.status.title || "";
-    const parsed = parseTitle(title);
-    console.log(`Persian Subtitles: searching for "${parsed.title}"`);
+    const name = playingFileName();
+    const parsed = parseTitle(name);
+    console.log(
+      `Persian Subtitles: url=${core.status.url} title=${core.status.title}`
+    );
+    console.log(`Persian Subtitles: searching for "${parsed.title}" (from "${name}")`);
     const candidates = await searchAll(parsed);
     console.log(`Persian Subtitles: ${candidates.length} result(s)`);
     // Each item carries its candidate data + the parsed query for download().
