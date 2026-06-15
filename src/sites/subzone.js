@@ -81,6 +81,7 @@ function downloadHeaders() {
 module.exports = {
   id: SITE_ID,
   name: SITE_NAME,
+  label: "SubZone", // English label shown in IINA's result list
   search,
   resolveDownloadUrl,
   downloadHeaders,

@@ -87,6 +87,7 @@ const UA =
 module.exports = {
   id: SITE_ID,
   name: SITE_NAME,
+  label: "Subkade", // English label shown in IINA's result list
   search,
   resolveDownloadUrl,
   downloadHeaders,

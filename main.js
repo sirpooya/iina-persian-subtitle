@@ -13,7 +13,7 @@
 //     "Subtitles > Find Online Subtitles" and in the settings provider list.
 //   * A menu item ("Fetch Persian Subtitle") for one-click auto-fetch.
 
-const { console, core, menu, subtitle, http, utils } = iina;
+const { console, core, subtitle, http, utils } = iina;
 
 const { parseTitle, scoreCandidate } = require("./src/match.js");
 const { extractBestSubtitle } = require("./src/unzip.js");
@@ -46,6 +46,12 @@ async function searchAll(parsed) {
 
 function siteById(id) {
   return SITES.find((s) => s.id === id);
+}
+
+// English-friendly label for a site id (shown in IINA's result list).
+function siteLabel(id) {
+  const s = siteById(id);
+  return (s && (s.label || s.name)) || id;
 }
 
 // Resolve -> download -> unzip -> convert -> return absolute path of a UTF-8
@@ -104,55 +110,38 @@ function latin1ToBytes(s) {
   return out;
 }
 
-// Top-level: auto-fetch the best Persian subtitle for the current file.
-async function autoFetch() {
-  const title = core.status.title;
-  if (!title) {
-    core.osd("هیچ فایلی در حال پخش نیست");
-    return;
-  }
-  const parsed = parseTitle(title);
-  console.log(`searching for: ${JSON.stringify(parsed)}`);
-  core.osd(`جستجوی زیرنویس فارسی: ${parsed.title}…`);
-
-  const candidates = await searchAll(parsed);
-  if (candidates.length === 0) {
-    core.osd("زیرنویسی پیدا نشد");
-    return;
-  }
-
-  // Try candidates best-first until one yields a usable file.
-  for (const candidate of candidates) {
-    const path = await fetchSubtitleFile(candidate, parsed);
-    if (path) {
-      core.subtitle.loadTrack(path);
-      core.osd("زیرنویس فارسی بارگذاری شد ✓");
-      console.log(`loaded subtitle: ${path}`);
-      return;
-    }
-  }
-  core.osd("دانلود زیرنویس ناموفق بود");
-}
-
 // --- IINA integration -------------------------------------------------------
+//
+// Provider-only: this plugin is just a subtitle SOURCE. IINA's native
+// "Find Online Subtitles" (⌘⇧D) drives the whole flow — it calls search(),
+// renders the result list in its top-left panel, and calls download() for the
+// row the user clicks. No custom menu, window, or OSD needed.
 
-// Native "Find Online Subtitles" provider.
 subtitle.registerProvider("persian-subs", {
+  // IINA calls this when the user triggers Find Online Subtitles. We search by
+  // the currently-playing file's name. The returned items populate the list.
   search: async () => {
     const title = core.status.title || "";
     const parsed = parseTitle(title);
+    console.log(`Persian Subtitles: searching for "${parsed.title}"`);
     const candidates = await searchAll(parsed);
-    // Wrap each candidate as a SubtitleItem carrying its data + parsed query.
+    console.log(`Persian Subtitles: ${candidates.length} result(s)`);
+    // Each item carries its candidate data + the parsed query for download().
     return candidates.map((c) => subtitle.item({ ...c, parsed }));
   },
+
+  // One row in the result list. English only.
   description: (item) => {
     const d = item.data;
     return {
-      name: d.title,
-      left: `${siteById(d.site)?.name ?? d.site}`,
-      right: `فارسی${d.score ? ` · امتیاز ${d.score}` : ""}`,
+      name: d.title || "Persian subtitle",
+      left: siteLabel(d.site),
+      right: "Persian",
     };
   },
+
+  // IINA calls this for the row the user clicks. Resolve -> download -> unzip ->
+  // encoding-fix; return the path(s) for IINA to load.
   download: async (item) => {
     const d = item.data;
     const path = await fetchSubtitleFile(d, d.parsed);
@@ -161,13 +150,3 @@ subtitle.registerProvider("persian-subs", {
 });
 
 console.log("Persian Subtitles plugin loaded");
-
-// Menu item for one-click auto-fetch.
-menu.addItem(
-  menu.item("دریافت خودکار زیرنویس فارسی (Fetch Persian Subtitle)", () => {
-    autoFetch().catch((e) => {
-      console.error(`autoFetch error: ${e}`);
-      core.osd("خطا در دریافت زیرنویس");
-    });
-  })
-);
