@@ -15,35 +15,16 @@ const SITE_ID = "subkade";
 const SITE_NAME = "ساب‌کده (subkade.ir)";
 const ORIGIN = "https://subkade.ir";
 
-// Detail-page links on subkade include the English title transliterated into
-// the slug, so we can both detect them and read a rough label from them.
-const DETAIL_LINK = /https:\/\/subkade\.ir\/(%[0-9a-fA-F]{2}|[a-z0-9\-])+\//g;
 const ZIP_LINK = /https:\/\/dl[0-9]*\.subkade\.ir\/[^"'\s>]+\.zip/gi;
 
-// Pull a human-ish label out of a subkade detail URL (the English part of the slug).
-function labelFromUrl(url) {
-  try {
-    const decoded = decodeURIComponent(url);
-    // Strip the Persian prefix words; keep the latin tail (title + year).
-    const slug = decoded.replace(ORIGIN + "/", "").replace(/\/$/, "");
-    const latin = slug.match(/[a-z0-9][a-z0-9\-]*$/i);
-    return (latin ? latin[0] : slug).replace(/-/g, " ").trim();
-  } catch (e) {
-    return url;
-  }
-}
-
-// Keep only detail links that look like a film/series subtitle page, not nav.
-function isSubtitleDetail(url) {
-  const u = url.toLowerCase();
-  if (!u.startsWith("https://subkade.ir/")) return false;
-  // Subtitle detail slugs contain these Persian words ("زیرنویس فیلم/سریال"),
-  // which percent-encode to these byte sequences.
-  return (
-    u.includes("%d8%b2%db%8c%d8%b1%d9%86%d9%88%db%8c%d8%b3") || // زیرنویس
-    u.includes("zirnevis")
-  );
-}
+// Genuine search results are anchors inside "sk-loop" cards. Each such <a> wraps
+// the result's detail URL, a `sk-loop-text` marker span, and an
+// `<h3 dir="ltr">English Title</h3>`. The site's permanent sidebar links
+// (friends, from, money-heist, ...) are NOT inside this structure, so matching
+// the full anchor block excludes them — fixing the "results regardless of query"
+// bug where sidebar links leaked into the list.
+const RESULT_ANCHOR = /<a\s+[^>]*href="(https:\/\/subkade\.ir\/[^"]+)"[^>]*>([\s\S]*?)<\/a>/gi;
+const H3_TITLE = /<h3[^>]*>\s*([^<]+?)\s*<\/h3>/i;
 
 async function search(query, http) {
   const url = `${ORIGIN}/?s=${encodeURIComponent(query.title)}`;
@@ -52,18 +33,34 @@ async function search(query, http) {
 
   const seen = new Set();
   const candidates = [];
-  const matches = html.match(DETAIL_LINK) || [];
-  for (const link of matches) {
-    if (!isSubtitleDetail(link) || seen.has(link)) continue;
-    seen.add(link);
+  let m;
+  RESULT_ANCHOR.lastIndex = 0;
+  while ((m = RESULT_ANCHOR.exec(html)) !== null) {
+    const href = m[1];
+    const inner = m[2];
+    // Must be an actual result card, not nav/sidebar/footer markup.
+    if (!/sk-loop/i.test(inner)) continue;
+    if (seen.has(href)) continue;
+    const titleMatch = inner.match(H3_TITLE);
+    if (!titleMatch) continue; // result cards always carry an <h3> title
+    seen.add(href);
     candidates.push({
       site: SITE_ID,
-      title: labelFromUrl(link),
-      pageUrl: link,
+      title: decodeEntities(titleMatch[1]),
+      pageUrl: href,
       lang: "fa",
     });
   }
   return candidates;
+}
+
+function decodeEntities(s) {
+  return s
+    .replace(/&amp;/g, "&")
+    .replace(/&#8211;/g, "–")
+    .replace(/&#0?39;|&apos;/g, "'")
+    .replace(/&quot;/g, '"')
+    .trim();
 }
 
 async function resolveDownloadUrl(candidate, http) {

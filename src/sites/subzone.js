@@ -82,6 +82,10 @@ module.exports = {
   id: SITE_ID,
   name: SITE_NAME,
   label: "SubZone", // English label shown in IINA's result list
+  // Download flow is JS-gated and not yet resolvable (see header comment), so
+  // we exclude this site from results for now to avoid listing rows that fail
+  // on click. Set true once resolveDownloadUrl works.
+  downloadable: false,
   search,
   resolveDownloadUrl,
   downloadHeaders,

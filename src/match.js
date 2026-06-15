@@ -72,19 +72,43 @@ function parseTitle(raw) {
   };
 }
 
+// Words too common to indicate a real title match. Matching on these alone
+// (e.g. "The ... of the ...") must NOT make two unrelated films look similar.
+const STOPWORDS = new Set([
+  "the", "a", "an", "of", "and", "or", "to", "in", "on", "at", "for", "with",
+  "from", "by", "is", "it", "this", "that", "part", "vol", "season",
+]);
+
+function contentTokens(s) {
+  return s
+    .toLowerCase()
+    .split(/[\s\-_:.]+/)
+    .filter((t) => t.length >= 2 && !STOPWORDS.has(t));
+}
+
 // Score a candidate subtitle (by its display title) against the parsed query.
-// Higher is better. Used to auto-pick when matching is set to automatic.
+// Returns 0 when the candidate doesn't share enough *content* words with the
+// query — so unrelated titles (and the site's permanent "popular" sidebar) are
+// filtered out rather than ranked.
 function scoreCandidate(parsed, candidateTitle, candidateMeta) {
-  const c = (candidateTitle || "").toLowerCase();
-  let score = 0;
+  const cTokens = new Set(contentTokens(candidateTitle || ""));
+  const qTokens = contentTokens(parsed.title || "");
+  if (qTokens.length === 0 || cTokens.size === 0) return 0;
 
-  // Title token overlap.
-  const qTokens = parsed.title.toLowerCase().split(/\s+/).filter(Boolean);
-  for (const t of qTokens) {
-    if (t.length >= 2 && c.includes(t)) score += 3;
-  }
+  // Count overlapping content words (word-level, not substring).
+  let overlap = 0;
+  for (const t of qTokens) if (cTokens.has(t)) overlap++;
 
-  if (parsed.year && c.includes(String(parsed.year))) score += 4;
+  // Require a real overlap: at least half the query's content words, and at
+  // least one. Otherwise it's not the same title.
+  const ratio = overlap / qTokens.length;
+  if (overlap === 0 || ratio < 0.5) return 0;
+
+  let score = overlap * 3;
+  // Bonus when the candidate is essentially the same set of content words.
+  if (overlap === qTokens.length) score += 4;
+
+  if (parsed.year && (candidateTitle || "").includes(String(parsed.year))) score += 4;
 
   if (parsed.isSeries && candidateMeta) {
     if (candidateMeta.season === parsed.season) score += 5;
@@ -92,7 +116,9 @@ function scoreCandidate(parsed, candidateTitle, candidateMeta) {
   }
 
   // Prefer exact release-name match (best sync chance).
-  if (parsed.raw && c.includes(parsed.raw.toLowerCase())) score += 6;
+  if (parsed.raw && (candidateTitle || "").toLowerCase().includes(parsed.raw.toLowerCase())) {
+    score += 6;
+  }
 
   return score;
 }

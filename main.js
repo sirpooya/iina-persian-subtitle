@@ -25,17 +25,23 @@ const SITES = [
 
 // --- core pipeline ----------------------------------------------------------
 
-// Search every site, return a flat list of scored candidates (best first).
+// Search every downloadable site, return scored candidates (best first).
+// Candidates that don't plausibly match the playing file (score 0) are dropped
+// so the list doesn't fill with unrelated titles when a site has no real hit.
 async function searchAll(parsed) {
   const all = [];
   for (const site of SITES) {
+    if (site.downloadable === false) continue; // skip sites we can't download from
     try {
       const results = await site.search(parsed, http);
+      let kept = 0;
       for (const c of results) {
         c.score = scoreCandidate(parsed, c.title, c.meta);
+        if (c.score <= 0) continue; // unrelated to the playing file
         all.push(c);
+        kept++;
       }
-      console.log(`${site.id}: ${results.length} result(s)`);
+      console.log(`${site.id}: ${results.length} result(s), ${kept} relevant`);
     } catch (e) {
       console.error(`${site.id} search failed: ${e}`);
     }
