@@ -1,0 +1,5 @@
+node_modules/
+dist/
+.parcel-cache/
+*.zip
+.DS_Store
