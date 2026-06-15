@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:subzone.ir)",
+      "WebFetch(domain:subkade.ir)",
+      "WebFetch(domain:docs.iina.io)",
+      "Bash(rm -rf plugin-opensub-ref)",
+      "Bash(gh repo *)",
+      "Bash(git clone *)",
+      "Bash(mkdir -p src/sites vendor)",
+      "Bash(curl -fsSL https://unpkg.com/fflate@0.8.2/umd/index.js -o vendor/fflate.js)",
+      "Bash(node tools/probe.js)",
+      "Bash(node tools/probe.js \"The.Matrix.1999.1080p.BluRay.x264-YIFY.mkv\")",
+      "Bash(node -e \"const f=require\\('./vendor/fflate.js'\\); console.log\\('unzipSync type:', typeof f.unzipSync\\);\")"
+    ]
+  }
+}

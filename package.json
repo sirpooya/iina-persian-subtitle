@@ -1,0 +1,15 @@
+{
+  "name": "iina-persian-subtitle",
+  "version": "0.1.0",
+  "description": "IINA plugin: search, download, unzip and load Persian subtitles from Persian subtitle sites.",
+  "private": true,
+  "main": "main.js",
+  "scripts": {
+    "test": "node tools/probe.js",
+    "probe": "node tools/probe.js"
+  },
+  "devDependencies": {
+    "iina-plugin-definition": "^0.99.0"
+  },
+  "license": "MIT"
+}

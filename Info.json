@@ -1,0 +1,19 @@
+{
+  "name": "Persian Subtitles",
+  "identifier": "ir.pooya.iina.persian-subtitle",
+  "version": "0.1.0",
+  "description": "Search, download and load Persian subtitles from Persian subtitle sites (zip-based).",
+  "author": {
+    "name": "Pooya"
+  },
+  "ghVersion": 9,
+  "entry": "main.js",
+  "permissions": ["show-osd", "file-system", "network-request"],
+  "allowedDomains": ["*"],
+  "subtitleProviders": [
+    {
+      "id": "persian-subs",
+      "name": "Persian Subtitles"
+    }
+  ]
+}
