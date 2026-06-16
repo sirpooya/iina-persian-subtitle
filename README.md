@@ -1,90 +1,109 @@
 # Persian Subtitles for IINA
 
-An IINA plugin that searches Persian subtitle sites for the currently-playing
-file, downloads the `.zip`, unzips it, fixes the text encoding, and loads the
-best-matching `.srt` as a subtitle track — automatically, matched by file name.
+An [IINA](https://iina.io) plugin that finds Persian subtitles for whatever
+you're watching. It registers as a native subtitle source, so you just press
+**⌘⇧D** (*Subtitle → Find Online Subtitles*) and pick from the list — IINA
+downloads, unzips, fixes the text encoding, and loads the subtitle for you.
+
+## What it does
+
+- Detects the playing file's release name (from its path) and searches Persian
+  subtitle sites for a matching title.
+- Opens each matching `.zip` and lists **every subtitle variant inside it** as a
+  separate row (e.g. `1080p WEB-DL EaZy`, `Ru WEB Fa · UTF-8`, …), so you can
+  pick the one that matches your release — not a blind auto-guess.
+- Fixes encoding automatically: **Windows-1256 / UTF-8 / UTF-8-BOM / UTF-16
+  (LE & BE)** are all decoded and re-saved as UTF-8 (mpv renders these reliably).
+- Self-contained: no native dependencies and no build step. A small pure-JS
+  unzip is bundled (IINA's JavaScriptCore sandbox can't load typical npm zip
+  libraries, which probe for `worker_threads`/`window`/`global`).
 
 ## Status
 
 | Capability | Status |
 |---|---|
-| Auto-match by playing file name (title / year / SxxExx) | ✅ |
-| `subkade.ir` search → resolve → download → unzip → load | ✅ working, verified end-to-end |
-| `subzone.ir` (subf2m mirror) search | ⚠️ search works; download is JS-rendered, not yet resolvable |
-| Unzip without native deps (bundled `fflate`) | ✅ |
-| Encoding: UTF-8 / UTF-8-BOM / **Windows-1256** / **UTF-16 LE-BE** → UTF-8 | ✅ |
-| Picks best entry in multi-file zips (release-name + UTF-8 preference) | ✅ |
-| Native "Find Online Subtitles" provider + menu item | ✅ |
+| `subkade.ir` — search → list variants → download → unzip → load | ✅ working |
+| Encoding auto-detect/convert → UTF-8 | ✅ |
+| Per-variant selection in IINA's overlay | ✅ |
+| `subzone.ir` (subf2m mirror) | ⚠️ excluded — its download is JS-rendered, not yet resolvable |
 
-This is **v0.1, experimental** (IINA's plugin system itself is experimental).
+This is **v0.1, experimental**. It scrapes third-party sites, so expect
+occasional adapter maintenance when a site changes its markup. For personal use.
+
+## Requirements
+
+- **IINA 1.4.0 or newer.** The plugin system is hidden/compiled-out in 1.3.x;
+  1.4+ enables it by default.
 
 ## Install (development)
 
-IINA loads unpacked plugins from a folder. No build step is required — this is
-plain JS with a vendored unzip lib.
+No build step — plain JS. Symlink this folder into IINA's plugins directory with
+the `.iinaplugin-dev` suffix and IINA loads it on launch:
 
-1. In IINA: **Settings → Plugins → Install from folder…** (or use the dev
-   install) and point it at this directory.
-2. Enable **network**, **file system**, and **OSD** permissions when prompted.
-3. Play a video, then either:
-   - run **Plugins menu → "دریافت خودکار زیرنویس فارسی (Fetch Persian Subtitle)"**, or
-   - use **Subtitles → Find Online Subtitles → Persian Subtitles**.
+```sh
+ln -sfn "$(pwd)" \
+  "$HOME/Library/Application Support/com.colliderli.iina/plugins/persian-subtitle.iinaplugin-dev"
+```
+
+Then launch IINA. The plugin appears under **Settings → Plugins** as
+*Persian Subtitles*. Grant **Network**, **File System**, and **OSD** permissions.
+
+## Use
+
+1. **Settings → Subtitle → Online Subtitles → “Download subtitles from”** →
+   choose **Persian** (so ⌘⇧D uses this source).
+2. Play a video and press **⌘⇧D** (*Subtitle → Find Online Subtitles*).
+3. Pick the variant matching your release. It loads automatically.
 
 ## How it works
 
 ```
-core.status.title  ──parse──▶  { title, year, season, episode }
+core.status.url ── parse ──▶ { title, year, season, episode }
         │
-        ▼  search each site adapter (src/sites/*.js)
-   candidates ──score vs playing file──▶ best first
+        ▼  search site adapters (src/sites/*) → score by title (stopword-aware)
+   matching movie pages
         │
-        ▼  resolveDownloadUrl → .zip URL
-   http.download(zip, @tmp/)  →  fflate unzipSync
+        ▼  resolve .zip URL → download (cached) → list .srt/.ass entries
+   one overlay row per subtitle variant   ◀── you pick here (⌘⇧D overlay)
         │
-        ▼  pickBestEntry (release-name + prefer [UTF-8])
-   decodeSubtitleBytes  (auto-detect 1256 / utf-8 / utf-16)  → write UTF-8 to @tmp/
-        │
-        ▼  core.subtitle.loadTrack(path)
+        ▼  extract chosen entry → detect encoding → write UTF-8 to @tmp/
+   IINA loads the returned path
 ```
 
 ## Layout
 
 ```
-Info.json            plugin manifest (provider id, permissions, allowedDomains)
-main.js              entry: provider registration + menu + pipeline
-src/match.js         filename → {title, year, season, episode}; candidate scoring
-src/unzip.js         fflate wrapper + encoding detection/conversion + entry picking
-src/sites/subkade.js working adapter (subkade.ir)
-src/sites/subzone.js partial adapter (subzone.ir) — search only
-vendor/fflate.js     bundled pure-JS unzip (no native deps)
-tools/probe.js       offline+live test harness (runs under Node, no IINA)
+Info.json             manifest (provider id "persian-subs", name "Persian", perms)
+main.js               provider registration + search/download pipeline
+src/match.js          filename → {title, year, season, episode}; title scoring
+src/unzip.js          encoding detect/convert + entry listing/extraction
+src/sites/subkade.js  working adapter (subkade.ir)
+src/sites/subzone.js  partial adapter (subzone.ir) — search only, excluded
+vendor/unzip.js       bundled pure-JS DEFLATE + ZIP reader (no deps, no globals)
+tools/probe.js        offline + live test harness (runs under Node, no IINA)
 ```
 
 ## Testing without IINA
 
-`tools/probe.js` stubs the `iina` global so the logic modules run under Node:
+`tools/probe.js` stubs the `iina` global (including the FileHandle binary-read
+API) so the logic runs under Node:
 
-```bash
-node tools/probe.js                                    # unit tests (parsing, scoring, encoding, entry-picking)
-node tools/probe.js "The.Matrix.1999.1080p-YIFY.mkv"   # live: search subkade → download → unzip → show Persian text
+```sh
+node tools/probe.js                                    # unit tests
+node tools/probe.js "The.Matrix.1999.1080p-YIFY.mkv"   # live: search → download → show Persian
 ```
 
-## Adding / fixing a site
+## Adding a site
 
-Each adapter in `src/sites/` exports `{ id, name, search, resolveDownloadUrl, downloadHeaders }`.
-See `src/sites/README.md` for the contract and how to capture live HTML to fill
-in selectors. The rest of the plugin needs no changes when you add one — just
-push it onto the `SITES` array in `main.js`.
+Each adapter in `src/sites/` exports
+`{ id, name, label, downloadable, search, resolveDownloadUrl, downloadHeaders }`.
+See [src/sites/README.md](src/sites/README.md) for the contract. Add it to the
+`SITES` array in `main.js`; nothing else changes.
 
-## Known limitations / TODO
+## Known limitations
 
-- **subzone.ir downloads**: the title/single-subtitle pages are client-side
-  rendered; the zip URL isn't in the static HTML. Need to reverse-engineer its
-  XHR/download endpoint (keyed by the numeric subtitle id).
-- **Series episode matching**: parsing handles `SxxExx`; per-episode zip
-  selection inside a season pack is best-effort via file-name scoring.
-- **`iina.file.read` binary mode** varies across IINA builds; `main.js` has a
-  fallback, but verify on your IINA version (check the plugin console log).
-- Legal/ToS: scrapes third-party sites; for personal use. Sites change markup —
-  expect occasional adapter maintenance.
-```
+- **subzone.ir downloads** are client-side rendered; the zip URL isn't in the
+  static HTML. Its adapter is `downloadable: false` until that flow is solved.
+- Search downloads the matching zip up front to list variants — fine for
+  subkade's small archives; could be lazy-loaded for larger sites later.
+- Series episode selection within a season pack is best-effort by file name.
