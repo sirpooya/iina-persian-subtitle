@@ -110,20 +110,38 @@ async function fetchSubtitleFile(candidate, parsed) {
   return extractBestSubtitle(bytes, parsed.raw, parsed.title);
 }
 
-// Read a file into a Uint8Array. Prefers iina.file; falls back to fetch on the
-// local file URL if the binary read API differs across IINA versions.
+// Read a file into a Uint8Array. IINA's file.read() returns a STRING (and
+// corrupts binary like zips — "isn't in the correct format"). The correct
+// binary API is file.handle(path, "read").readToEnd() -> Uint8Array.
 function readBytes(absPath) {
-  try {
-    const { file } = iina;
-    // Newer IINA exposes a binary read; some versions return a string.
-    if (file && typeof file.read === "function") {
-      const data = file.read(absPath, { binary: true });
+  const { file } = iina;
+  // Preferred: FileHandle binary read.
+  if (file && typeof file.handle === "function") {
+    let fh = null;
+    try {
+      fh = file.handle(absPath, "read");
+      const data = fh.readToEnd();
       if (data instanceof Uint8Array) return data;
       if (data && data.buffer) return new Uint8Array(data.buffer);
-      if (typeof data === "string") return latin1ToBytes(data);
+    } catch (e) {
+      console.error(`file.handle read failed: ${e}`);
+    } finally {
+      try {
+        if (fh && typeof fh.close === "function") fh.close();
+      } catch (e) {
+        /* ignore */
+      }
+    }
+  }
+  // Last-resort fallback: text read reinterpreted as latin1 bytes (lossy for
+  // some bytes, but better than nothing on builds lacking file.handle).
+  try {
+    if (file && typeof file.read === "function") {
+      const s = file.read(absPath);
+      if (typeof s === "string") return latin1ToBytes(s);
     }
   } catch (e) {
-    console.error(`file.read failed: ${e}`);
+    console.error(`file.read fallback failed: ${e}`);
   }
   return null;
 }

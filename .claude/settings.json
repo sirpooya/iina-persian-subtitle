@@ -29,7 +29,8 @@
       "Bash(node tools/probe.js \"The.Laws.of.the.Universe.The.Age.of.Elohim.2021.720p.YIFY.mkv\")",
       "Bash(node --check src/sites/subkade.js)",
       "Bash(node --check main.js)",
-      "Bash(node --check src/match.js)"
+      "Bash(node --check src/match.js)",
+      "Bash(node tools/probe.js \"Project.Hail.Mary.2026.720p.10bit.WEB-DL.6CH.x265.PSA.SoftSub.ZarFilm.mkv\")"
     ]
   }
 }

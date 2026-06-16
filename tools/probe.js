@@ -20,9 +20,16 @@ global.iina = {
   utils: { resolvePath: resolveTmp },
   file: {
     write: (p, text) => fs.writeFileSync(resolveTmp(p), text, "utf8"),
-    read: (p, opts) => {
-      const buf = fs.readFileSync(resolveTmp(p));
-      return opts && opts.binary ? new Uint8Array(buf) : buf.toString("utf8");
+    read: (p) => fs.readFileSync(resolveTmp(p)).toString("utf8"),
+    // Mirror IINA's FileHandle binary API (read/readToEnd -> Uint8Array).
+    handle: (p, mode) => {
+      const abs = resolveTmp(p);
+      const buf = mode === "read" ? fs.readFileSync(abs) : Buffer.alloc(0);
+      return {
+        readToEnd: () => new Uint8Array(buf),
+        read: (n) => new Uint8Array(buf.subarray(0, n)),
+        close: () => {},
+      };
     },
   },
 };
