@@ -1,22 +1,18 @@
 // Persian Subtitles for IINA
 //
-// Flow:
-//   1. Read the playing file name (core.status.title) and parse it (src/match.js).
-//   2. Search each enabled site adapter (src/sites/*) for Persian subtitles.
-//   3. Score candidates against the playing file; auto-pick the best.
-//   4. Resolve the candidate's .zip URL, download it to @tmp/.
-//   5. Unzip (fflate), pick the best .srt/.ass, convert to UTF-8 (src/unzip.js).
-//   6. Load the resulting file as a subtitle track.
-//
-// Integrates with IINA two ways:
-//   * subtitle.registerProvider("persian-subs", ...) -> shows up under
-//     "Subtitles > Find Online Subtitles" and in the settings provider list.
-//   * A menu item ("Fetch Persian Subtitle") for one-click auto-fetch.
+// Flow (driven by IINA's native "Find Online Subtitles", ⌘⇧D):
+//   1. Read the playing file name from core.status.url and parse it (src/match.js).
+//   2. Search each site adapter for matching movie/series pages; score by title.
+//   3. For each match, download its .zip and list the subtitle variants inside.
+//      Each variant becomes one row in IINA's result overlay, so the user can
+//      pick the release that matches their file.
+//   4. On pick, extract that entry from the (cached) zip, convert to UTF-8, and
+//      return the path for IINA to load.
 
 const { console, core, subtitle, http, utils } = iina;
 
 const { parseTitle, scoreCandidate } = require("./src/match.js");
-const { extractBestSubtitle } = require("./src/unzip.js");
+const { listSubtitleEntries, extractEntry } = require("./src/unzip.js");
 
 const SITES = [
   require("./src/sites/subkade.js"),

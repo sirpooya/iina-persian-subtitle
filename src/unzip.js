@@ -226,4 +226,50 @@ function extractBestSubtitle(zipBytes, preferName, outBaseName) {
   return abs;
 }
 
-module.exports = { extractBestSubtitle, decodeSubtitleBytes, pickBestEntry };
+// List the subtitle entry names inside an archive (filtering junk/.url/__MACOSX).
+// Returns [] on failure. Each name is the path inside the zip.
+function listSubtitleEntries(zipBytes) {
+  let entries;
+  try {
+    entries = unzipSync(zipBytes);
+  } catch (e) {
+    console.error(`unzip (list) failed: ${e}`);
+    return [];
+  }
+  return Object.keys(entries).filter(
+    (n) => SUB_EXT.test(n) && !n.startsWith("__MACOSX")
+  );
+}
+
+// Extract ONE named entry from an archive, decode to UTF-8, write to @tmp/,
+// return the resolved path. Used when the user picked a specific variant.
+function extractEntry(zipBytes, entryName, outBaseName) {
+  let entries;
+  try {
+    entries = unzipSync(zipBytes);
+  } catch (e) {
+    console.error(`unzip (extract) failed: ${e}`);
+    return null;
+  }
+  const bytes = entries[entryName];
+  if (!bytes) {
+    console.error(`entry not found in archive: ${entryName}`);
+    return null;
+  }
+  const ext = (entryName.match(SUB_EXT) || [".srt"])[0].toLowerCase();
+  const text = decodeSubtitleBytes(bytes);
+  const safeBase = (outBaseName || "subtitle").replace(/[^\w.\-]+/g, "_").slice(0, 80);
+  const dest = `@tmp/${safeBase}${ext}`;
+  file.write(dest, text);
+  const abs = utils.resolvePath(dest);
+  console.log(`extracted "${entryName}" -> ${abs}`);
+  return abs;
+}
+
+module.exports = {
+  extractBestSubtitle,
+  extractEntry,
+  listSubtitleEntries,
+  decodeSubtitleBytes,
+  pickBestEntry,
+};
