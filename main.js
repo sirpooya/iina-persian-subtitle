@@ -75,35 +75,19 @@ function playingFileName() {
   return core.status.title || "";
 }
 
-// Resolve -> download -> unzip -> convert -> return absolute path of a UTF-8
-// subtitle file ready to load. Returns null on failure.
-async function fetchSubtitleFile(candidate, parsed) {
-  const site = siteById(candidate.site);
-  if (!site) return null;
+// Cache of downloaded zip bytes, keyed by URL, so search() (which lists the
+// variants) and download() (which extracts one) don't fetch the same zip twice.
+const zipCache = new Map();
+let zipSeq = 0;
 
-  let zipUrl = candidate.downloadUrl;
-  if (!zipUrl) {
-    zipUrl = await site.resolveDownloadUrl(candidate, http);
-  }
-  if (!zipUrl) {
-    console.log(`${candidate.site}: no download URL for "${candidate.title}"`);
-    return null;
-  }
-  console.log(`downloading ${zipUrl}`);
-
-  const dest = "@tmp/persian-sub-archive.zip";
-  const headers = site.downloadHeaders ? site.downloadHeaders() : {};
+// Download a zip and return its bytes (Uint8Array), caching by URL.
+async function downloadZipBytes(zipUrl, headers) {
+  if (zipCache.has(zipUrl)) return zipCache.get(zipUrl);
+  const dest = `@tmp/persian-sub-${zipSeq++}.zip`;
   await http.download(zipUrl, dest, { headers });
-
-  // Read the downloaded zip back as bytes for the unzip step.
-  const absZip = utils.resolvePath(dest);
-  const bytes = readBytes(absZip);
-  if (!bytes) {
-    console.error(`could not read downloaded archive at ${absZip}`);
-    return null;
-  }
-
-  return extractBestSubtitle(bytes, parsed.raw, parsed.title);
+  const bytes = readBytes(utils.resolvePath(dest));
+  if (bytes) zipCache.set(zipUrl, bytes);
+  return bytes;
 }
 
 // Read a file into a Uint8Array. IINA's file.read() returns a STRING (and
@@ -156,37 +140,83 @@ function latin1ToBytes(s) {
 // renders the result list in its top-left panel, and calls download() for the
 // row the user clicks. No custom menu, window, or OSD needed.
 
+// Turn the file name inside a zip into a short, readable variant label, e.g.
+// "The.Matrix.1999.1080p.BluRay.YIFY [UTF-8].srt" -> "1080p BluRay YIFY · UTF-8".
+const SUB_EXT_RE = /\.(srt|ass|ssa|vtt|sub)$/i;
+function variantLabel(entryName) {
+  let base = entryName.split("/").pop().replace(SUB_EXT_RE, "");
+  const enc = (base.match(/\[(utf-?8|unicode|ansi)\]/i) || [])[1];
+  base = base.replace(/\[[^\]]*\]/g, "").replace(/[._]+/g, " ").trim();
+  return enc ? `${base} · ${enc.toUpperCase()}` : base;
+}
+
 subtitle.registerProvider("persian-subs", {
-  // IINA calls this when the user triggers Find Online Subtitles. We search by
-  // the currently-playing file's name. The returned items populate the list.
+  // IINA calls this on ⌘⇧D. We search by the playing file name, then for each
+  // matching movie download its zip and list the subtitle variants inside, so
+  // each variant is its own selectable row in the overlay.
   search: async () => {
     const name = playingFileName();
     const parsed = parseTitle(name);
-    console.log(
-      `Persian Subtitles: url=${core.status.url} title=${core.status.title}`
-    );
-    console.log(`Persian Subtitles: searching for "${parsed.title}" (from "${name}")`);
-    const candidates = await searchAll(parsed);
-    console.log(`Persian Subtitles: ${candidates.length} result(s)`);
-    // Each item carries its candidate data + the parsed query for download().
-    return candidates.map((c) => subtitle.item({ ...c, parsed }));
+    console.log(`Persian: url=${core.status.url} title=${core.status.title}`);
+    console.log(`Persian: searching for "${parsed.title}" (from "${name}")`);
+
+    const movies = await searchAll(parsed);
+    console.log(`Persian: ${movies.length} matching title(s)`);
+
+    const items = [];
+    for (const movie of movies) {
+      const site = siteById(movie.site);
+      if (!site) continue;
+      try {
+        const zipUrl = movie.downloadUrl || (await site.resolveDownloadUrl(movie, http));
+        if (!zipUrl) continue;
+        const headers = site.downloadHeaders ? site.downloadHeaders() : {};
+        const bytes = await downloadZipBytes(zipUrl, headers);
+        if (!bytes) continue;
+        const entries = listSubtitleEntries(bytes);
+        console.log(`Persian: "${movie.title}" -> ${entries.length} variant(s)`);
+        for (const entry of entries) {
+          items.push(
+            subtitle.item({
+              site: movie.site,
+              movieTitle: movie.title,
+              zipUrl,
+              entryName: entry,
+              label: variantLabel(entry),
+              outBase: parsed.title,
+            })
+          );
+        }
+      } catch (e) {
+        console.error(`Persian: failed expanding "${movie.title}": ${e}`);
+      }
+    }
+    console.log(`Persian: ${items.length} total variant(s)`);
+    return items;
   },
 
-  // One row in the result list. English only.
+  // One row in the overlay: the variant name, the movie + site, "Persian".
   description: (item) => {
     const d = item.data;
     return {
-      name: d.title || "Persian subtitle",
-      left: siteLabel(d.site),
+      name: d.label || d.movieTitle || "Persian subtitle",
+      left: `${d.movieTitle} · ${siteLabel(d.site)}`,
       right: "Persian",
     };
   },
 
-  // IINA calls this for the row the user clicks. Resolve -> download -> unzip ->
-  // encoding-fix; return the path(s) for IINA to load.
+  // The user picked a variant: extract that exact entry from the cached zip,
+  // convert to UTF-8, return its path for IINA to load.
   download: async (item) => {
     const d = item.data;
-    const path = await fetchSubtitleFile(d, d.parsed);
+    let bytes = zipCache.get(d.zipUrl);
+    if (!bytes) {
+      const site = siteById(d.site);
+      const headers = site && site.downloadHeaders ? site.downloadHeaders() : {};
+      bytes = await downloadZipBytes(d.zipUrl, headers);
+    }
+    if (!bytes) return [];
+    const path = extractEntry(bytes, d.entryName, d.outBase);
     return path ? [path] : [];
   },
 });
