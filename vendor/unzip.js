@@ -188,8 +188,35 @@ function rd32(b, o) {
   return (b[o] | (b[o + 1] << 8) | (b[o + 2] << 16) | (b[o + 3] << 24)) >>> 0;
 }
 
+// Decode a ZIP DOS date+time pair into an ISO-ish "YYYY-MM-DD" string, or null.
+// dosTime is the 16-bit time field, dosDate the 16-bit date field (both little-
+// endian, already read). Subtitle rows only need the day, so we drop the clock.
+function dosDate(dosDate) {
+  if (!dosDate) return null; // 0 = no timestamp set
+  const day = dosDate & 0x1f;
+  const month = (dosDate >> 5) & 0x0f;
+  const year = ((dosDate >> 9) & 0x7f) + 1980;
+  if (!day || !month || month > 12 || day > 31) return null;
+  const mm = month < 10 ? `0${month}` : `${month}`;
+  const dd = day < 10 ? `0${day}` : `${day}`;
+  return `${year}-${mm}-${dd}`;
+}
+
+// Attach a name->date ("YYYY-MM-DD") map as a NON-ENUMERABLE property so that
+// existing `Object.keys(entries)` callers keep seeing only the file names.
+function attachDate(out, name, dateStr) {
+  if (!dateStr) return;
+  let map = out.__dates;
+  if (!map) {
+    map = {};
+    Object.defineProperty(out, "__dates", { value: map, enumerable: false });
+  }
+  map[name] = dateStr;
+}
+
 // Parse local file headers sequentially (works for the vast majority of zips,
-// including all subtitle packs). Returns { name: Uint8Array }.
+// including all subtitle packs). Returns { name: Uint8Array } with a hidden
+// `__dates` map ({ name: "YYYY-MM-DD" }) for entries that carry a timestamp.
 function unzipSync(buf) {
   const out = {};
   let i = 0;
@@ -216,6 +243,7 @@ function unzipSync(buf) {
     const data = buf.subarray(dataStart, dataStart + compSize);
     try {
       out[name] = method === 0 ? data.slice() : inflate(data);
+      attachDate(out, name, dosDate(rd16(buf, i + 12))); // i+10 time, i+12 date
     } catch (e) {
       // skip a bad entry, keep going
     }
@@ -256,6 +284,7 @@ function unzipViaCentralDir(buf) {
     const data = buf.subarray(dataStart, dataStart + compSize);
     try {
       out[name] = method === 0 ? data.slice() : inflate(data);
+      attachDate(out, name, dosDate(rd16(buf, cd + 14))); // cd+12 time, cd+14 date
     } catch (err) {
       /* skip */
     }

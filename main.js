@@ -12,7 +12,7 @@
 const { console, core, subtitle, http, utils } = iina;
 
 const { parseTitle, scoreCandidate } = require("./src/match.js");
-const { listSubtitleEntries, extractEntry } = require("./src/unzip.js");
+const { listSubtitleEntries, extractEntry, extractBestSubtitle } = require("./src/unzip.js");
 
 const SITES = [
   require("./src/sites/subkade.js"),
@@ -140,14 +140,55 @@ function latin1ToBytes(s) {
 // renders the result list in its top-left panel, and calls download() for the
 // row the user clicks. No custom menu, window, or OSD needed.
 
-// Turn the file name inside a zip into a short, readable variant label, e.g.
-// "The.Matrix.1999.1080p.BluRay.YIFY [UTF-8].srt" -> "1080p BluRay YIFY · UTF-8".
+// Turn the path of a subtitle file inside a zip into a short, readable variant
+// label. Two shapes occur in Persian packs:
+//   - Movies / single releases carry the release name in the file itself, e.g.
+//     "The.Matrix.1999.1080p.BluRay.YIFY [UTF-8].srt" -> "1080p BluRay YIFY · UTF-8".
+//   - Series packs name episodes generically ("01en.srt", "10.srt") but put the
+//     real info in the FOLDER path, e.g.
+//     "Show - Complete/English/Show - E01/01en.srt" -> "E01".
+// So when the file name is just an episode number, fall back to the episode
+// marker mined from the folder path.
 const SUB_EXT_RE = /\.(srt|ass|ssa|vtt|sub)$/i;
+const EP_IN_PATH = /\b(?:e|ep|episode)[ ._-]?(\d{1,3})\b/i;
+const SEASON_IN_PATH = /\bs(\d{1,2})\b/i;
+// A file name that carries no release info — just an episode/sequence number
+// (optionally with a language tag like "en"/"fa"), e.g. "01en", "10", "e03".
+const PLAIN_EP_NAME = /^(?:e|ep)?\d{1,3}(?:en|fa|fr|persian|farsi)?$/i;
+
 function variantLabel(entryName) {
   let base = entryName.split("/").pop().replace(SUB_EXT_RE, "");
   const enc = (base.match(/\[(utf-?8|unicode|ansi)\]/i) || [])[1];
-  base = base.replace(/\[[^\]]*\]/g, "").replace(/[._]+/g, " ").trim();
-  return enc ? `${base} · ${enc.toUpperCase()}` : base;
+  const cleaned = base
+    .replace(/\[[^\]]*\]/g, "") // drop [YTS.MX], [UTF-8], etc.
+    .replace(/[._]+/g, " ")
+    .replace(/\s*[-–]\s*(?=\s|$)/g, " ") // tidy separators left dangling by the above
+    .replace(/\s+/g, " ")
+    .trim();
+
+  // Generic episode file name -> derive a label from the folder path instead.
+  if (PLAIN_EP_NAME.test(base.replace(/\s+/g, ""))) {
+    const ep = (entryName.match(EP_IN_PATH) || base.match(/(\d{1,3})/) || [])[1];
+    const se = (entryName.match(SEASON_IN_PATH) || [])[1];
+    if (ep) {
+      const epNum = String(parseInt(ep, 10)).padStart(2, "0");
+      return se ? `S${se.padStart(2, "0")}E${epNum}` : `E${epNum}`;
+    }
+  }
+
+  return enc ? `${cleaned} · ${enc.toUpperCase()}` : cleaned;
+}
+
+// Format a "YYYY-MM-DD" date into a compact label for the right-hand column,
+// e.g. "2023-07-30" -> "Jul 30, 2023". Returns "" for missing/invalid input.
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+function formatDate(iso) {
+  if (!iso) return "";
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
+  if (!m) return "";
+  const mon = MONTHS[parseInt(m[2], 10) - 1];
+  if (!mon) return "";
+  return `${mon} ${parseInt(m[3], 10)}, ${m[1]}`;
 }
 
 subtitle.registerProvider("persian-subs", {
@@ -168,24 +209,48 @@ subtitle.registerProvider("persian-subs", {
       const site = siteById(movie.site);
       if (!site) continue;
       try {
-        const zipUrl = movie.downloadUrl || (await site.resolveDownloadUrl(movie, http));
-        if (!zipUrl) continue;
-        const headers = site.downloadHeaders ? site.downloadHeaders() : {};
-        const bytes = await downloadZipBytes(zipUrl, headers);
-        if (!bytes) continue;
-        const entries = listSubtitleEntries(bytes);
-        console.log(`Persian: "${movie.title}" -> ${entries.length} variant(s)`);
-        for (const entry of entries) {
-          items.push(
-            subtitle.item({
-              site: movie.site,
-              movieTitle: movie.title,
-              zipUrl,
-              entryName: entry,
-              label: variantLabel(entry),
-              outBase: parsed.title,
-            })
-          );
+        if (typeof site.expand === "function") {
+          // Adapter-driven rows (e.g. subzone): each Persian entry is already a
+          // self-describing release, so we don't download any zip during search.
+          const rows = await site.expand(movie, http);
+          console.log(`Persian: "${movie.title}" -> ${rows.length} release(s) [${site.id}]`);
+          for (const row of rows) {
+            items.push(
+              subtitle.item({
+                site: movie.site,
+                movieTitle: movie.title,
+                zipUrl: row.downloadUrl,
+                entryName: null, // single-srt zip; pick the only entry on download
+                label: row.label,
+                date: row.date || null,
+                uploader: row.uploader || "",
+                outBase: parsed.title,
+              })
+            );
+          }
+        } else {
+          // Default path (e.g. subkade): one zip per title, many variants inside.
+          const zipUrl = movie.downloadUrl || (await site.resolveDownloadUrl(movie, http));
+          if (!zipUrl) continue;
+          const headers = site.downloadHeaders ? site.downloadHeaders() : {};
+          const bytes = await downloadZipBytes(zipUrl, headers);
+          if (!bytes) continue;
+          const entries = listSubtitleEntries(bytes);
+          console.log(`Persian: "${movie.title}" -> ${entries.length} variant(s) [${site.id}]`);
+          for (const entry of entries) {
+            items.push(
+              subtitle.item({
+                site: movie.site,
+                movieTitle: movie.title,
+                zipUrl,
+                entryName: entry.name,
+                label: variantLabel(entry.name),
+                date: entry.date || null,
+                uploader: "",
+                outBase: parsed.title,
+              })
+            );
+          }
         }
       } catch (e) {
         console.error(`Persian: failed expanding "${movie.title}": ${e}`);
@@ -195,13 +260,19 @@ subtitle.registerProvider("persian-subs", {
     return items;
   },
 
-  // One row in the overlay: the variant name, the movie + site, "Persian".
+  // One row in the overlay. IINA renders three strings:
+  //   name  : the release/episode label (the meaningful title)
+  //   left  : the overline — "fa · <Movie> · <Source>" (fa first, source kept)
+  //   right : the entry date when known, else the uploader (subzone), else "".
+  // fps / download-count are intentionally absent: Persian sites don't expose
+  // them per file, so we don't fabricate them.
   description: (item) => {
     const d = item.data;
+    const overline = ["fa", d.movieTitle, siteLabel(d.site)].filter(Boolean).join(" · ");
     return {
       name: d.label || d.movieTitle || "Persian subtitle",
-      left: `${d.movieTitle} · ${siteLabel(d.site)}`,
-      right: "Persian",
+      left: overline,
+      right: formatDate(d.date) || d.uploader || "",
     };
   },
 
@@ -216,7 +287,10 @@ subtitle.registerProvider("persian-subs", {
       bytes = await downloadZipBytes(d.zipUrl, headers);
     }
     if (!bytes) return [];
-    const path = extractEntry(bytes, d.entryName, d.outBase);
+    // Named entry (subkade's multi-variant pack) vs. single-srt zip (subzone).
+    const path = d.entryName
+      ? extractEntry(bytes, d.entryName, d.outBase)
+      : extractBestSubtitle(bytes, d.label || d.outBase, d.outBase);
     return path ? [path] : [];
   },
 });

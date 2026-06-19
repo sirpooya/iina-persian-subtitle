@@ -226,8 +226,9 @@ function extractBestSubtitle(zipBytes, preferName, outBaseName) {
   return abs;
 }
 
-// List the subtitle entry names inside an archive (filtering junk/.url/__MACOSX).
-// Returns [] on failure. Each name is the path inside the zip.
+// List the subtitle entries inside an archive (filtering junk/.url/__MACOSX).
+// Returns [{ name, date }] (date is "YYYY-MM-DD" or null), [] on failure.
+// `name` is the full path inside the zip; `date` is the entry's stored mtime.
 function listSubtitleEntries(zipBytes) {
   let entries;
   try {
@@ -236,9 +237,10 @@ function listSubtitleEntries(zipBytes) {
     console.error(`unzip (list) failed: ${e}`);
     return [];
   }
-  return Object.keys(entries).filter(
-    (n) => SUB_EXT.test(n) && !n.startsWith("__MACOSX")
-  );
+  const dates = entries.__dates || {};
+  return Object.keys(entries)
+    .filter((n) => SUB_EXT.test(n) && !n.startsWith("__MACOSX"))
+    .map((name) => ({ name, date: dates[name] || null }));
 }
 
 // Extract ONE named entry from an archive, decode to UTF-8, write to @tmp/,
