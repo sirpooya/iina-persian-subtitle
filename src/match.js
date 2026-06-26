@@ -104,6 +104,22 @@ function scoreCandidate(parsed, candidateTitle, candidateMeta) {
   const ratio = overlap / qTokens.length;
   if (overlap === 0 || ratio < 0.5) return 0;
 
+  // Short-query guard. A 1–2 word query (e.g. "Arn") matches at 100% ratio
+  // against ANY title that merely contains those words — so a one-word query
+  // would pull in every unrelated film sharing that word ("Arn The Knight
+  // Templar" AND "Arn The Kingdom at Road's End"). To disambiguate:
+  //   - if the file has a year, the candidate MUST contain that same year;
+  //   - otherwise require the candidate to be a tight match (its content words
+  //     are essentially just the query's, not a long title that buries them).
+  if (qTokens.length <= 2 && overlap < cTokens.size) {
+    const yearStr = parsed.year ? String(parsed.year) : "";
+    const candHasYear = yearStr && (candidateTitle || "").includes(yearStr);
+    // A title is "tight" when it has at most one extra content word beyond the
+    // overlap (allows "<title> <year>" but not a 5+ word unrelated slug).
+    const tight = cTokens.size - overlap <= 1;
+    if (parsed.year ? !candHasYear : !tight) return 0;
+  }
+
   let score = overlap * 3;
   // Bonus when the candidate is essentially the same set of content words.
   if (overlap === qTokens.length) score += 4;
