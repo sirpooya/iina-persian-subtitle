@@ -224,6 +224,7 @@ subtitle.registerProvider("persian-subs", {
                 label: row.label,
                 date: row.date || null,
                 uploader: row.uploader || "",
+                rated: row.rated || null, // "good" | null (subzone rating badge)
                 outBase: parsed.title,
               })
             );
@@ -268,7 +269,10 @@ subtitle.registerProvider("persian-subs", {
   // them per file, so we don't fabricate them.
   description: (item) => {
     const d = item.data;
-    const overline = ["fa", d.movieTitle, siteLabel(d.site)].filter(Boolean).join(" · ");
+    // "fa · <Movie> · <Source>", plus a "★ Good" badge at the end when the site
+    // rated this entry good (subzone). Not-rated entries add nothing.
+    const badge = d.rated === "good" ? "★ Good" : null;
+    const overline = ["fa", d.movieTitle, siteLabel(d.site), badge].filter(Boolean).join(" · ");
     return {
       name: d.label || d.movieTitle || "Persian subtitle",
       left: overline,

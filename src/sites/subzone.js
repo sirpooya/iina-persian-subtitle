@@ -48,6 +48,9 @@ const DOWNLOAD_ANCHOR =
   /<a class=["']download icon-download["']\s+href=["'](\/subtitles\/[a-z0-9\-]+\/farsi_persian\/\d+)["']/gi;
 const RELEASE_LI = /<li>\s*([^<]+?)\s*<\/li>/gi;
 const UPLOADER = /\/u\/\d+["'][^>]*>\s*([^<]+?)\s*</gi;
+// Each row carries a rating badge: <span class='rate good'> or 'rate not rated'.
+// In practice subzone only uses these two values (no "bad" tier on live pages).
+const RATE = /<span class=["']rate\s+([^"']*)["']/gi;
 
 async function search(query, http) {
   // Real search endpoint (from the homepage form). /?s=<query> is NOT search —
@@ -126,9 +129,19 @@ async function expand(candidate, http) {
     UPLOADER.lastIndex = 0;
     while ((u = UPLOADER.exec(block)) !== null) up = u[1];
 
+    // Last rate span in the block is this row's badge. Normalise to "good" when
+    // the site marked it rated-good; otherwise null (don't surface "not rated").
+    let rated = null;
+    let rr;
+    RATE.lastIndex = 0;
+    while ((rr = RATE.exec(block)) !== null) {
+      rated = /\bgood\b/i.test(rr[1]) ? "good" : null;
+    }
+
     rows.push({
       label: release || slugLabel(candidate.pageUrl),
       uploader: up.trim(),
+      rated, // "good" | null
       // Download is a normal route on the entry page; build it directly.
       downloadUrl: ORIGIN + anchor.entryPath + "/download",
       date: null, // subzone doesn't expose a per-row date in the list
