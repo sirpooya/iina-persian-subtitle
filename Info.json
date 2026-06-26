@@ -1,8 +1,8 @@
 {
-  "name": "fa",
-  "identifier": "ir.pooya.iina.persian-subtitle",
+  "name": "FarsiSubs",
+  "identifier": "ir.pooya.iina.farsi-subs",
   "version": "0.1.0",
-  "description": "Search, download and load Persian subtitles from Persian subtitle sites (zip-based).",
+  "description": "Search, download and load Farsi/Persian subtitles from Persian subtitle sites (zip-based).",
   "author": {
     "name": "Pooya"
   },
@@ -12,7 +12,7 @@
   "allowedDomains": ["*"],
   "subtitleProviders": [
     {
-      "id": "persian-subs",
+      "id": "farsi-subs",
       "name": "subzone, subkade"
     }
   ]
