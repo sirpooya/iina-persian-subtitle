@@ -30,12 +30,22 @@ const PERSIAN_ENTRY = /\/subtitles\/[a-z0-9\-]+\/farsi_persian\/\d+/gi;
 // /subtitles/<slug>  (title page, no language segment)
 const TITLE_PAGE = /\/subtitles\/[a-z0-9\-]+(?=["'])/gi;
 
-// One Persian result row on a title page: the leading markup holds the release
-// name <li>s and uploader, ending at the row's download anchor.
-const PERSIAN_ROW =
-  /<li class=["']item[^>]*>([\s\S]*?)<a class=["']download icon-download["']\s+href=["'](\/subtitles\/[a-z0-9\-]+\/farsi_persian\/\d+)["']/gi;
+// The site does NOT wrap rows in a stable container class (the only <li class>
+// on the page is "visited"), so we can't anchor on a row opener. What IS stable
+// is the per-entry download anchor that CLOSES each Persian row:
+//   <a class='download icon-download' href='/subtitles/<slug>/farsi_persian/<id>'></a>
+// (attributes are single-quoted on the live site; allow either quote.)
+//
+// We locate every such anchor, then take each row's content as the slice of
+// HTML between the PREVIOUS download anchor and this one — which holds exactly
+// this entry's release-name <li>s (in <ul class='scrolllist'>) and uploader.
+// Slicing this way (rather than a lazy regex spanning to the next anchor) keeps
+// release names and uploaders bound to the correct entry even when the page has
+// stray <ul>/<a> markup between rows.
+const DOWNLOAD_ANCHOR =
+  /<a class=["']download icon-download["']\s+href=["'](\/subtitles\/[a-z0-9\-]+\/farsi_persian\/\d+)["']/gi;
 const RELEASE_LI = /<li>\s*([^<]+?)\s*<\/li>/gi;
-const UPLOADER = /\/u\/\d+["'][^>]*>\s*([^<]+?)\s*</i;
+const UPLOADER = /\/u\/\d+["'][^>]*>\s*([^<]+?)\s*</gi;
 
 async function search(query, http) {
   const url = `${ORIGIN}/?s=${encodeURIComponent(query.title)}`;
@@ -84,25 +94,39 @@ async function expand(candidate, http) {
 
   const rows = [];
   const seen = new Set();
-  let m;
-  PERSIAN_ROW.lastIndex = 0;
-  while ((m = PERSIAN_ROW.exec(html)) !== null) {
-    const block = m[1];
-    const entryPath = m[2];
-    if (seen.has(entryPath)) continue;
-    seen.add(entryPath);
+
+  // Pass 1: find every download anchor (the row CLOSER) with its position.
+  const anchors = [];
+  let a;
+  DOWNLOAD_ANCHOR.lastIndex = 0;
+  while ((a = DOWNLOAD_ANCHOR.exec(html)) !== null) {
+    anchors.push({ entryPath: a[1], end: a.index });
+  }
+
+  // Pass 2: each row is the HTML between the previous anchor and this one.
+  let prevEnd = 0;
+  for (const anchor of anchors) {
+    const block = html.slice(prevEnd, anchor.end);
+    prevEnd = anchor.end;
+
+    if (seen.has(anchor.entryPath)) continue;
+    seen.add(anchor.entryPath);
 
     // First <li> is the canonical release name; keep it for the title.
     RELEASE_LI.lastIndex = 0;
     const relMatch = RELEASE_LI.exec(block);
     const release = relMatch ? cleanRelease(relMatch[1]) : "";
-    const up = (block.match(UPLOADER) || [])[1] || "";
+    // Last /u/<id> link in the block is this row's uploader (nearest the anchor).
+    let up = "";
+    let u;
+    UPLOADER.lastIndex = 0;
+    while ((u = UPLOADER.exec(block)) !== null) up = u[1];
 
     rows.push({
       label: release || slugLabel(candidate.pageUrl),
       uploader: up.trim(),
       // Download is a normal route on the entry page; build it directly.
-      downloadUrl: ORIGIN + entryPath + "/download",
+      downloadUrl: ORIGIN + anchor.entryPath + "/download",
       date: null, // subzone doesn't expose a per-row date in the list
     });
   }
@@ -110,11 +134,21 @@ async function expand(candidate, http) {
 }
 
 function cleanRelease(s) {
-  return s
-    .replace(/&amp;/g, "&")
+  return decodeEntities(s)
     .replace(/[._]+/g, " ")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+// Release names carry a few HTML entities (e.g. "It&#39;s", "Tom &amp; Jerry").
+// Decode the handful that actually occur, plus numeric character references.
+function decodeEntities(s) {
+  return s
+    .replace(/&amp;/g, "&")
+    .replace(/&quot;/g, '"')
+    .replace(/&#0*39;/g, "'")
+    .replace(/&apos;/g, "'")
+    .replace(/&#(\d+);/g, (_, n) => String.fromCharCode(parseInt(n, 10)));
 }
 
 function slugLabel(path) {
