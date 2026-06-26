@@ -1,5 +1,5 @@
 {
-  "name": "subzone, subkade",
+  "name": "fa",
   "identifier": "ir.pooya.iina.persian-subtitle",
   "version": "0.1.0",
   "description": "Search, download and load Persian subtitles from Persian subtitle sites (zip-based).",
@@ -13,7 +13,7 @@
   "subtitleProviders": [
     {
       "id": "persian-subs",
-      "name": "fa"
+      "name": "subzone, subkade"
     }
   ]
 }

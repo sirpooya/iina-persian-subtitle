@@ -1,7 +1,9 @@
 // Adapter for subzone.ir (a subf2m / Subscene-style mirror).
 //
 // VERIFIED FLOW (captured from live HTML, 2026-06):
-//   search:  GET https://subzone.ir/?s=<query>
+//   search:  GET https://subzone.ir/subtitles/searchbytitle?query=<query>
+//            (NOTE: /?s=<query> is NOT search — it always returns the static
+//             homepage, so the old adapter only ever "found" popular titles.)
 //            -> title pages:  /subtitles/<slug>
 //            -> direct links: /subtitles/<slug>/farsi_persian/<id>
 //   expand:  GET the title page (server-rendered, NOT a JS shell as the old
@@ -48,8 +50,10 @@ const RELEASE_LI = /<li>\s*([^<]+?)\s*<\/li>/gi;
 const UPLOADER = /\/u\/\d+["'][^>]*>\s*([^<]+?)\s*</gi;
 
 async function search(query, http) {
-  const url = `${ORIGIN}/?s=${encodeURIComponent(query.title)}`;
-  const res = await http.get(url, { headers: { "User-Agent": UA } });
+  // Real search endpoint (from the homepage form). /?s=<query> is NOT search —
+  // it always returns the static homepage, so it only ever surfaced popular titles.
+  const url = `${ORIGIN}/subtitles/searchbytitle?query=${encodeURIComponent(query.title)}`;
+  const res = await http.get(url, { headers: { "User-Agent": UA, Referer: ORIGIN + "/" } });
   const html = res.text || "";
 
   const seen = new Set();
